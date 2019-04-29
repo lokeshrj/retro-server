@@ -1,55 +1,56 @@
 const WebSocket = require('ws');
 const uuid = require('uuid/v1');
-// const store = require('./store');
-
-// sample data
-// let retroid = store.createRetro();
-// let retro = store.getRetro(retroid);
-// retro.addCol('col 1');
-// retro.addCol('col 2');
-// retro.getCol('col 1').addCard('card 1.1', 'description 1.1');
-// retro.getCol('col 1').addCard('card 1.2', 'description 1.2');
-// retro.getCol('col 2').addCard('card 2.1', 'description 2.1');
-// retro.getCol('col 2').addCard('card 2.2', 'description 2.2');
-// console.log(retro.getCol('col 1'));
-// console.log(retro);
 
 const wss = new WebSocket.Server({ port: 8080 });
 
 const retros = {};
 
-const connections = [];
+const connections = {
+    // retro id: [ client websockets ],
+};
 
 function updateConnections() {
-    connections.forEach(ws => {
-        if (ws.readyState != WebSocket.OPEN) {   // prune dead connections
-            delete ws;
-        } else {
-            ws.send(JSON.stringify({
-                retros
-            }));
-        }
-    })
+    console.log('Object.keys(connections)', Object.keys(connections));
+    console.log('Object.keys(retros)', Object.keys(retros));
+    Object.keys(connections).forEach(retroid => {
+        let clients = connections[retroid];
+        let retro = retros[retroid];
+        console.log('clients.length', clients.length, 'retro', retro);
+        clients.forEach(ws => {
+            if (ws.readyState != WebSocket.OPEN) {   // prune dead connections
+                delete ws;
+            } else {
+                ws.send(JSON.stringify({
+                    retro
+                }));
+            }
+        })
+    });
 }
 
-function handleMessage(evt) {
+function handleMessage(evt, ws) {
     let msg = JSON.parse(evt);
     console.log(msg);
     let type = msg && msg.type;
     let id = msg && msg.id;
-    switch(type) {
-        case 'startretro':  // expecting { type: 'newsession }
+    switch (type) {
+        case 'startretro':
             // check if exists, else create
             if (retros[id]) {
-                // add this connection
+                console.log('retro exists');
+                connections[id].push(ws);
             } else {
+                console.log('create retro');
                 retros[id] = {
                     wentwell: [],
                     improve: [],
                     actionItems: [],
-                    //connections: []
+                    connections: []
                 }
+                connections[id] = [ws];
             }
+            //console.log('pushing ', ws, 'to ', retros[id]);
+
             break;
         // case 'addcol':  // expecting { sid, type: 'addcol', colname }
         //     if (msg.sid && msg.colname) {
@@ -84,7 +85,7 @@ function handleMessage(evt) {
             cardToUpvote.votes++;
             break;
         case 'downvote':
-            let cardToDownvote = retros[id] && retros[id].wentwell.find(card => card.title == msg.cardTitle);
+            let cardToDownvote = retros[id] && [...retros[id].wentwell, ...retros[id].improve, ...retros[id].actionItems].find(card => card.title == msg.cardTitle);
             cardToDownvote.votes--;
             break;
     }
@@ -92,7 +93,7 @@ function handleMessage(evt) {
 }
 
 wss.on('connection', ws => {
-    connections.push(ws);
-    ws.on('message', evt => handleMessage(evt));
+    //connections.push(ws);
+    ws.on('message', evt => handleMessage(evt, ws));
     updateConnections();
 });
